@@ -408,9 +408,26 @@ func (client *Client) UnmapVolume(name, initiator string) (*common.ResponseStatu
 		return status, err
 	}
 
-	_, status, httpRes, err := ExecuteWithFailover(client.apiClient.DefaultApi.UnmapVolumeInitiatorNamesGet(client.Ctx, initiator, name).Execute, client)
-	logger.V(2).Info("unmap volume", "name", name, "initiator", initiator, "http", httpRes.Status)
+	target := client.resolveMapTarget(initiator)
+	_, status, httpRes, err := ExecuteWithFailover(client.apiClient.DefaultApi.UnmapVolumeInitiatorNamesGet(client.Ctx, target, name).Execute, client)
+	logger.V(2).Info("unmap volume", "name", name, "initiator", initiator, "target", target, "http", httpRes.Status)
 	return status, err
+}
+
+// resolveMapTarget returns the ME5024 identifier to use in the initiator slot
+// of /map/volume and /unmap/volume calls. When the initiator is a member of a
+// host record, the ME5024 silently no-ops map calls that reference the raw
+// IQN (the initiator is considered "owned" by the host). Passing the host's
+// name resolves to that host record and produces a working map entry with
+// identical LUN and access semantics. If the initiator is ungrouped, or the
+// lookup fails, the original initiator identifier is returned so the caller's
+// behavior matches pre-patch releases.
+func (client *Client) resolveMapTarget(initiator string) string {
+	_, host, err := client.GetInitiatorHostGroup(initiator)
+	if err != nil || host == "" {
+		return initiator
+	}
+	return host
 }
 
 // ExpandVolume : extend a volume if there is enough space in the disk group
@@ -440,7 +457,14 @@ func (client *Client) DeleteVolume(name string) (*common.ResponseStatus, error) 
 	return status, err
 }
 
-// PublishVolume: Attach a volume to an initiator, return mapped lun or error
+// PublishVolume: Attach a volume to an initiator, return mapped lun or error.
+//
+// When an initiator belongs to a host record on the array, the map call is
+// issued against the host's name rather than the raw IQN — the ME5024
+// silently no-ops initiator-level map requests for initiators that are
+// already owned by a host (see resolveMapTarget). Multiple initiators on the
+// same host therefore produce a single host-level map entry instead of a
+// duplicate per-initiator attempt.
 func (client *Client) PublishVolume(volumeId string, initiators []string) (string, error) {
 
 	logger := klog.FromContext(client.Ctx)
@@ -452,19 +476,29 @@ func (client *Client) PublishVolume(volumeId string, initiators []string) (strin
 
 	logger.Info("using LUN", "lun", lun)
 
-	mappingSuccessful := false
+	seen := make(map[string]struct{}, len(initiators))
+	targets := make([]string, 0, len(initiators))
 	for _, initiator := range initiators {
-		if err = client.mapVolumeProcess(volumeId, initiator, lun); err != nil {
-			logger.Error(err, "mapping error", "volume", volumeId, "initiator", initiator, "LUN", lun)
+		t := client.resolveMapTarget(initiator)
+		if _, dup := seen[t]; dup {
+			continue
+		}
+		seen[t] = struct{}{}
+		targets = append(targets, t)
+	}
+
+	mappingSuccessful := false
+	for _, target := range targets {
+		if err = client.mapVolumeProcess(volumeId, target, lun); err != nil {
+			logger.Error(err, "mapping error", "volume", volumeId, "target", target, "LUN", lun)
 		} else {
 			mappingSuccessful = true
-			logger.Info("successfully mapped", "volume", volumeId, "initiator", initiators, "lun", lun)
+			logger.Info("successfully mapped", "volume", volumeId, "target", target, "lun", lun)
 		}
 	}
 
 	if mappingSuccessful {
 		return strconv.Itoa(lun), nil
-	} else {
-		return "", fmt.Errorf("error mapping volume (%s), no initiators were mapped successfully", volumeId)
 	}
+	return "", fmt.Errorf("error mapping volume (%s), no targets were mapped successfully", volumeId)
 }
