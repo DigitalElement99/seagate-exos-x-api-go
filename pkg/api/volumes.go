@@ -90,7 +90,7 @@ func (client *Client) CreateVolume(name, size, pool string) (*common.VolumeObjec
 
 	logger := klog.FromContext(client.Ctx)
 	response, status, httpRes, err := ExecuteWithFailover(client.apiClient.DefaultApi.CreateVolumePoolSizeNameGet(client.Ctx, pool, size, name).Execute, client)
-	logger.V(2).Info("create volume", "name", name, "http", httpRes.Status)
+	logger.V(2).Info("create volume", "name", name, "http", httpStatus(httpRes))
 
 	volume := common.VolumeObject{}
 	if response != nil && len(response.GetVolumes()) > 0 {
@@ -148,7 +148,7 @@ func (client *Client) ShowVolumes(volume string) ([]common.VolumeObject, *common
 
 	response, responseStatus, httpRes, err := ExecuteWithFailover(client.apiClient.DefaultApi.ShowVolumesNamesGet(client.Ctx, volume).Execute, client)
 
-	if httpRes.StatusCode == http.StatusOK && response != nil && err == nil {
+	if err == nil && httpRes != nil && httpRes.StatusCode == http.StatusOK && response != nil {
 		if logger.V(4).Enabled() {
 			// Extract Status resource information
 			logger.V(4).Info("++ ShowVolumesNamesGet.Status[0]",
@@ -167,7 +167,7 @@ func (client *Client) ShowVolumes(volume string) ([]common.VolumeObject, *common
 			}
 		}
 	} else {
-		logger.V(4).Info("-- ShowVolumesNamesGet", "status", httpRes.Status, "err", err, "body", httpRes.Body)
+		logger.V(4).Info("-- ShowVolumesNamesGet", "status", httpStatus(httpRes), "err", err)
 		return nil, &common.ResponseStatus{}, err
 	}
 
@@ -380,7 +380,7 @@ func (client *Client) MapVolume(name, initiator, access string, lun int) (*commo
 
 	logger := klog.FromContext(client.Ctx)
 	_, respStatus, httpRes, err := ExecuteWithFailover(client.apiClient.DefaultApi.MapVolumeAccessLunInitiatorNamesGet(client.Ctx, access, strconv.Itoa(lun), initiator, name).Execute, client)
-	logger.V(2).Info("map volume", "name", name, "lun", lun, "initiator", initiator, "http", httpRes.Status)
+	logger.V(2).Info("map volume", "name", name, "lun", lun, "initiator", initiator, "http", httpStatus(httpRes))
 	return respStatus, err
 }
 
@@ -390,7 +390,7 @@ func (client *Client) CreateNickname(name, iqn string) (*common.ResponseStatus, 
 
 	logger := klog.FromContext(client.Ctx)
 	_, response, httpRes, err := ExecuteWithFailover(client.apiClient.DefaultApi.SetInitiatorIdNicknameGet(client.Ctx, iqn, name).Execute, client)
-	logger.V(2).Info("create nickname", "name", name, "nickname", iqn, "http", httpRes.Status)
+	logger.V(2).Info("create nickname", "name", name, "nickname", iqn, "http", httpStatus(httpRes))
 	return response, err
 }
 
@@ -459,13 +459,13 @@ func (client *Client) UnmapVolume(name, initiator string) (*common.ResponseStatu
 
 	if initiator == "" {
 		_, status, httpRes, err := ExecuteWithFailover(client.apiClient.DefaultApi.UnmapVolumeNamesGet(client.Ctx, name).Execute, client)
-		logger.V(2).Info("unmap volume", "name", name, "initiator", initiator, "http", httpRes.Status)
+		logger.V(2).Info("unmap volume", "name", name, "initiator", initiator, "http", httpStatus(httpRes))
 		return status, err
 	}
 
 	target := client.resolveMapTarget(initiator)
 	_, status, httpRes, err := ExecuteWithFailover(client.apiClient.DefaultApi.UnmapVolumeInitiatorNamesGet(client.Ctx, target, name).Execute, client)
-	logger.V(2).Info("unmap volume", "name", name, "initiator", initiator, "target", target, "http", httpRes.Status)
+	logger.V(2).Info("unmap volume", "name", name, "initiator", initiator, "target", target, "http", httpStatus(httpRes))
 	return status, err
 }
 
@@ -490,7 +490,7 @@ func (client *Client) ExpandVolume(name, size string) (*common.ResponseStatus, e
 
 	logger := klog.FromContext(client.Ctx)
 	_, status, httpRes, err := ExecuteWithFailover(client.apiClient.DefaultApi.ExpandVolumeSizeNameGet(client.Ctx, size, name).Execute, client)
-	logger.V(2).Info("expand volume", "name", name, "size", size, "http", httpRes.Status)
+	logger.V(2).Info("expand volume", "name", name, "size", size, "http", httpStatus(httpRes))
 	return status, err
 }
 
@@ -505,7 +505,7 @@ func (client *Client) CopyVolume(sourceName string, destinationName string, pool
 
 	logger := klog.FromContext(client.Ctx)
 	_, respStatus, httpRes, err := ExecuteWithFailover(client.apiClient.DefaultApi.CopyVolumeDestinationPoolNameSourceGet(client.Ctx, pool, destinationName, sourceName).Execute, client)
-	logger.V(2).Info("copy volume", "destination", destinationName, "source", sourceName, "pool", pool, "http", httpRes.Status)
+	logger.V(2).Info("copy volume", "destination", destinationName, "source", sourceName, "pool", pool, "http", httpStatus(httpRes))
 	if err != nil || respStatus == nil || respStatus.ResponseTypeNumeric != ApiSuccess {
 		return respStatus, err
 	}
@@ -549,7 +549,7 @@ func (client *Client) DeleteVolume(name string) (*common.ResponseStatus, error) 
 
 	logger := klog.FromContext(client.Ctx)
 	_, status, httpRes, err := ExecuteWithFailover(client.apiClient.DefaultApi.DeleteVolumesNamesGet(client.Ctx, name).Execute, client)
-	logger.V(2).Info("delete volume", "name", name, "http", httpRes.Status)
+	logger.V(2).Info("delete volume", "name", name, "http", httpStatus(httpRes))
 	return status, err
 }
 
