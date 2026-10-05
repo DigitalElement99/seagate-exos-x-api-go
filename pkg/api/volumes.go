@@ -201,16 +201,34 @@ func (client *Client) GetVolumeWwn(volumeName string) (string, error) {
 
 	logger := klog.FromContext(client.Ctx)
 
-	wwn := ""
 	response, status, err := client.ShowVolumes(volumeName)
-	if err == nil && status.ResponseTypeNumeric == 0 {
-		if len(response) > 0 && response[0].VolumeName == volumeName {
-			wwn = strings.ToLower(response[0].Wwn)
+	wwn, err := volumeWwnFromShowVolumes(volumeName, response, status, err)
+
+	logger.V(3).Info("GetVolumeWwn", "volume", volumeName, "wwn", wwn, "err", err)
+	return wwn, err
+}
+
+// volumeWwnFromShowVolumes turns a ShowVolumes result into the volume's WWN.
+// An API-level failure or a missing/empty WWN is an error, never ("", nil):
+// the ME5024 can answer "volume does not exist" for a volume it reported
+// visible milliseconds earlier (seen 2026-10-03), and a volume ID built from
+// an empty WWN can never be published on a node.
+func volumeWwnFromShowVolumes(volumeName string, vols []common.VolumeObject, status *common.ResponseStatus, err error) (string, error) {
+	if err != nil {
+		return "", err
+	}
+	if status == nil {
+		return "", fmt.Errorf("show volumes %s: no response status", volumeName)
+	}
+	if status.ResponseTypeNumeric != ApiSuccess {
+		return "", fmt.Errorf("show volumes %s: %s (%d)", volumeName, status.Response, status.ReturnCode)
+	}
+	for _, v := range vols {
+		if v.VolumeName == volumeName && v.Wwn != "" {
+			return strings.ToLower(v.Wwn), nil
 		}
 	}
-
-	logger.V(3).Info("GetVolumeWwn", "volume", volumeName, "wwn", wwn)
-	return wwn, err
+	return "", fmt.Errorf("show volumes %s: no WWN returned", volumeName)
 }
 
 // Given an initiator ID or nickname, get associated host and hostgroups if they exist
