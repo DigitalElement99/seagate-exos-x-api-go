@@ -51,7 +51,7 @@ func (client *Client) ShowSnapshots(snapshotId string, sourceVolumeId string) ([
 		for _, s := range response.Snapshots {
 			snapshot := common.SnapshotObject{}
 			snapshot.ObjectName = s.GetObjectName()
-			snapshot.CreationTime, _ = common.CreationTimeFromString(s.GetCreationDateTime())
+			snapshot.CreationTime, _ = common.CreationTime(s.GetCreationDateTimeNumeric(), s.GetCreationDateTime())
 			snapshot.CreationDateTime = s.GetCreationDateTime()
 			snapshot.CreationDateTimeNumeric = s.GetCreationDateTimeNumeric()
 			snapshot.MasterVolumeName = s.GetMasterVolumeName()

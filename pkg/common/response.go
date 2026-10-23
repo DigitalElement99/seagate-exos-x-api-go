@@ -94,3 +94,13 @@ func CreationTimeFromString(creationTime string) (*timestamp.Timestamp, error) {
 
 	return timestamppb.New(creationTimestamp), nil
 }
+
+// CreationTime prefers the epoch (creation-date-time-numeric): the string form
+// is the array's local wall clock with no zone, so parsing it as UTC is off by
+// the array's UTC offset.
+func CreationTime(numeric int64, creationTime string) (*timestamp.Timestamp, error) {
+	if numeric > 0 {
+		return timestamppb.New(time.Unix(numeric, 0)), nil
+	}
+	return CreationTimeFromString(creationTime)
+}
