@@ -46,3 +46,28 @@ func TestVolumeWwnFromShowVolumes(t *testing.T) {
 		}
 	}
 }
+
+// Regression (2026-10-22): the CreateVolume retry for a snapshot clone
+// asked for the snapshot's restoreSize (blocks reported as bytes) and the exact
+// size match returned AlreadyExists for the full-size clone it had just made.
+func TestVolumeExistsIn(t *testing.T) {
+	vols := []common.VolumeObject{{VolumeName: "k3s_x", Blocks: 209715200, BlockSize: 512}} // 100Gi
+	cases := []struct {
+		name       string
+		id         string
+		size       int64
+		wantExists bool
+		wantErr    bool
+	}{
+		{"exact", "k3s_x", 107374182400, true, false},
+		{"larger than requested", "k3s_x", 209715200, true, false},
+		{"smaller than requested", "k3s_x", 107374182401, true, true},
+		{"absent", "k3s_y", 1, false, false},
+	}
+	for _, c := range cases {
+		exists, err := volumeExistsIn(c.id, c.size, vols)
+		if exists != c.wantExists || (err != nil) != c.wantErr {
+			t.Errorf("%s: got (%v, %v), want exists=%v err=%v", c.name, exists, err, c.wantExists, c.wantErr)
+		}
+	}
+}

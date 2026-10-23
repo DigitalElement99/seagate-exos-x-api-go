@@ -125,14 +125,24 @@ func (client *Client) CheckVolumeExists(volumeId string, size int64) (bool, erro
 	for _, v := range volumes {
 		if v.VolumeName == volumeId {
 			logger.V(2).Info("volume exists", "volume", volumeId, "size", size, "blocks", v.Blocks, "blocksize", v.BlockSize)
-			if v.Blocks*v.BlockSize == size {
-				return true, nil
-			} else {
-				return true, status.Error(codes.AlreadyExists, "cannot create volume with same name but different capacity than the existing one")
-			}
 		}
 	}
+	return volumeExistsIn(volumeId, size, volumes)
+}
 
+// volumeExistsIn reports whether volumeId is in volumes. Per the CSI spec an
+// existing volume is compatible when it is at least the required size: a
+// clone (CopyVolume) is always its source's size, so an exact match failed
+// every CreateVolume retry for a volume restored from a snapshot.
+func volumeExistsIn(volumeId string, size int64, volumes []common.VolumeObject) (bool, error) {
+	for _, v := range volumes {
+		if v.VolumeName == volumeId {
+			if v.Blocks*v.BlockSize >= size {
+				return true, nil
+			}
+			return true, status.Error(codes.AlreadyExists, "cannot create volume with same name but smaller capacity than requested")
+		}
+	}
 	return false, nil
 }
 
